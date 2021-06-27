@@ -1,71 +1,80 @@
-import "reflect-metadata";
-import "dotenv/config"
-import express, { Request, Response } from 'express';
-import {ApolloServer} from 'apollo-server-express';
-import { buildSchema } from "type-graphql";
-import { createConnection } from "typeorm";
-import cookieParser from 'cookie-parser';
-import { verify } from "jsonwebtoken";
+/** @format */
 
-import { UserResolver } from "./UserResolver";
-import { User } from "./entity/User";
-import { createAccessToken, createRefreshToken } from "./auth";
-import { sendRefreshToken } from "./sendRefreshToken";
+import 'reflect-metadata';
+import 'dotenv/config';
+import express, { Request, Response } from 'express';
+import { ApolloServer } from 'apollo-server-express';
+import { buildSchema } from 'type-graphql';
+import { createConnection } from 'typeorm';
+import cookieParser from 'cookie-parser';
+import { verify } from 'jsonwebtoken';
+import cors from 'cors';
+
+import { UserResolver } from './UserResolver';
+import { User } from './entity/User';
+import { createAccessToken, createRefreshToken } from './auth';
+import { sendRefreshToken } from './sendRefreshToken';
 
 (async () => {
-    const app = express();
+	const app = express();
 
-    app.use(cookieParser());
+	app.use(
+		cors({
+			origin: 'http://localhost:3000',
+			credentials: true,
+		})
+	);
+	app.use(cookieParser());
 
-    app.get('/', (_req: Request, res: Response) => {
-        res.send('Hey there!');
-    });
+	app.get('/', (_req: Request, res: Response) => {
+		res.send('Hey there!');
+	});
 
-    app.post('/refresh_token', async (req: Request, res: Response) => {
-        const token = req.cookies.jid;
+	app.post('/refresh_token', async (req: Request, res: Response) => {
+		const token = req.cookies.jid;
 
-        if (!token) {
-            return res.send({ ok: false, accessToken: '' });
-        }
-        
-        let payload: any = null;
-        try {
-            payload = verify(token, process.env.REFRESH_TOKEN_SECRET!);
-        } catch (err) {
-            console.log(err);
-            return res.send({ ok: false, accessToken: '' });
-        }
+		if (!token) {
+			return res.send({ ok: false, accessToken: '' });
+		}
 
-        // Refresh token is valid and we send back the accesstoken
-        const user = await User.findOne({ id: payload.userId });
+		let payload: any = null;
+		try {
+			payload = verify(token, process.env.REFRESH_TOKEN_SECRET!);
+		} catch (err) {
+			console.log(err);
+			return res.send({ ok: false, accessToken: '' });
+		}
 
-        if (!user) {
-            return res.send({ ok: false, accessToken: '' });
-        }
+		// Refresh token is valid and we send back the accesstoken
+		const user = await User.findOne({ id: payload.userId });
 
-        if (user.tokenVersion !== payload.tokenVersion) {
-            return res.send({ ok: false, accessToken: '' });
-        }
+		if (!user) {
+			return res.send({ ok: false, accessToken: '' });
+		}
 
-        sendRefreshToken(res, createRefreshToken(user));
+		if (user.tokenVersion !== payload.tokenVersion) {
+			return res.send({ ok: false, accessToken: '' });
+		}
 
-        return res.send({ ok: true, accessToken: createAccessToken(user)});
-    })
+		sendRefreshToken(res, createRefreshToken(user));
 
-    await createConnection();
+		return res.send({ ok: true, accessToken: createAccessToken(user) });
+	});
 
-    const apolloServer = new ApolloServer({
-        schema: await buildSchema({
-            resolvers: [UserResolver]
-        }),
-        context: ({ req, res }) => ({ req, res })
-    });
+	await createConnection();
 
-    apolloServer.applyMiddleware({ app });
+	const apolloServer = new ApolloServer({
+		schema: await buildSchema({
+			resolvers: [UserResolver],
+		}),
+		context: ({ req, res }) => ({ req, res }),
+	});
 
-    app.listen(4000, () => {
-        console.log('Server is running on port 4000');
-    });
+	apolloServer.applyMiddleware({ app, cors: false });
+
+	app.listen(4000, () => {
+		console.log('Server is running on port 4000');
+	});
 })();
 
 // createConnection().then(async connection => {
