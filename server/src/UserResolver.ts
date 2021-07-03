@@ -1,4 +1,16 @@
-import { Arg, Ctx, Field, Int, Mutation, ObjectType, Query, Resolver, UseMiddleware } from 'type-graphql';
+/** @format */
+
+import {
+	Arg,
+	Ctx,
+	Field,
+	Int,
+	Mutation,
+	ObjectType,
+	Query,
+	Resolver,
+	UseMiddleware,
+} from 'type-graphql';
 import { compare, hash } from 'bcryptjs';
 import { getConnection } from 'typeorm';
 
@@ -10,82 +22,86 @@ import { sendRefreshToken } from './sendRefreshToken';
 
 @ObjectType()
 class LoginResponse {
-    @Field()
-    accessToken: string
+	@Field()
+	accessToken: string;
 }
 
 @Resolver()
 export class UserResolver {
-    @Query(() => String)
-    hello() {
-        return 'hi';
-    }
+	@Query(() => String)
+	hello() {
+		return 'hi';
+	}
 
-    @Query(() => String)
-    @UseMiddleware(isAuth)
-    bye(
-        @Ctx() {payload }: MyContext
-    ) {
-        return `Your user id is ${payload!.userId}`;
-    }
+	@Query(() => String)
+	@UseMiddleware(isAuth)
+	bye(@Ctx() { payload }: MyContext) {
+		return `Your user id is ${payload!.userId}`;
+	}
 
-    @Query(() => [User])
-    user() {
-        return User.find();
-    }
+	@Query(() => [User])
+	user() {
+		return User.find();
+	}
 
-    @Mutation(() => Boolean)
-    async revokeRefreshToken(
-        @Arg('userId', () => Int) userId: number
-    ) {
-        await getConnection().getRepository(User).increment({ id: userId }, "tokenVersion", 1);
+	@Mutation(() => Boolean)
+	async logout(@Ctx() { res }: MyContext) {
+		sendRefreshToken(res, '');
+		return true;
+	}
 
-        return true;
-    }
+	@Mutation(() => Boolean)
+	async revokeRefreshToken(@Arg('userId', () => Int) userId: number) {
+		await getConnection()
+			.getRepository(User)
+			.increment({ id: userId }, 'tokenVersion', 1);
 
-    @Mutation(() => LoginResponse)
-    async login(
-        @Arg('email') email: string,
-        @Arg('password') password: string,
-        @Ctx() { res }: MyContext
-    ): Promise<LoginResponse> {
-        const user = await User.findOne({ where: { email } });
+		return true;
+	}
 
-        if (!user) {
-            throw new Error("Could not found user");
-        }
+	@Mutation(() => LoginResponse)
+	async login(
+		@Arg('email') email: string,
+		@Arg('password') password: string,
+		@Ctx() { res }: MyContext
+	): Promise<LoginResponse> {
+		const user = await User.findOne({ where: { email } });
 
-        const valid = await compare(password, user.password);
+		if (!user) {
+			throw new Error('Could not found user');
+		}
 
-        if (!valid) {
-            throw new Error("bad password");
-        }
+		const valid = await compare(password, user.password);
 
-        // login successfully
-        sendRefreshToken(res, createRefreshToken(user));
-        
-        return {
-            accessToken: createAccessToken(user)
-        };
-    }
+		if (!valid) {
+			throw new Error('bad password');
+		}
 
-    @Mutation(() => Boolean)
-    async register(
-        @Arg('email') email: string,
-        @Arg('password') password: string
-    ) {
-        const hashedPassword = await hash(password, 12);
+		// login successfully
+		sendRefreshToken(res, createRefreshToken(user));
 
-        try {
-            await User.insert({
-                email,
-                password: hashedPassword
-            })
-        } catch (err) {
-            console.log(err);
-            return false
-        }
-        
-        return true;
-    }
+		return {
+			accessToken: createAccessToken(user),
+		};
+	}
+
+	@Mutation(() => Boolean)
+	async register(
+		@Arg('email') email: string,
+		@Arg('password') password: string
+	) {
+		const hashedPassword = await hash(password, 12);
+
+		try {
+			await User.insert({
+				email,
+				password: hashedPassword,
+			});
+		} catch (err) {
+			console.log(err);
+			return false;
+		}
+
+		return true;
+	}
 }
